@@ -3056,7 +3056,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
                         color: PdfColors.green),
                     if (manifest.senderCompany.isNotEmpty) ...[
                       pw.SizedBox(height: 5),
-                      _pdfShareTextWidget('شرکت ارسال کننده: ${manifest.senderCompany}', font, fontWeight: pw.FontWeight.bold),
+                      _pdfShareTextWidget('شرکت تأمین‌کننده/ارسال‌کننده: ${manifest.senderCompany}', font, fontWeight: pw.FontWeight.bold),
                     ],
                     if (manifest.freightCost > 0) ...[
                       pw.SizedBox(height: 5),
@@ -5100,7 +5100,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
             TextFormField(
               controller: senderCtrl,
               decoration: InputDecoration(
-                labelText: 'نام شرکت ارسال کننده (اختیاری)',
+                labelText: 'نام شرکت تأمین‌کننده / ارسال‌کننده (اختیاری)',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 prefixIcon: const Icon(Icons.local_shipping_outlined),
               ),
@@ -6983,7 +6983,7 @@ class ManifestDetailsScreen extends StatelessWidget {
                     Text('بارنامه شماره ${manifest.number}', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     _infoRow('📅 تاریخ', manifest.date),
-                    _infoRow('🚚 شرکت ارسال کننده', manifest.senderCompany.isEmpty ? 'ثبت نشده' : manifest.senderCompany),
+                    _infoRow('🚚 شرکت تأمین‌کننده / ارسال‌کننده', manifest.senderCompany.isEmpty ? 'ثبت نشده' : manifest.senderCompany),
                     _infoRow('💵 هزینه باربری', manifest.freightCost > 0 ? '${_price(manifest.freightCost)} ریال' : 'اختیاری / ثبت نشده'),
                     _infoRow('📦 تعداد اقلام', '${manifest.items.length}'),
                     _infoRow('💰 مجموع ارزش کالاها', '${_price(manifest.totalPrice)} ریال'),
@@ -7211,6 +7211,51 @@ class _ManifestScreenState extends State<ManifestScreen> {
                               ),
                             ],
                           ),
+                          const SizedBox(height: 14),
+                          Card(
+                            elevation: 0,
+                            color: Colors.blue.withOpacity(0.06),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                              side: BorderSide(color: Colors.blue.withOpacity(0.18)),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  const Text(
+                                    'اطلاعات کلی بارنامه',
+                                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  const Text(
+                                    'این اطلاعات یک‌بار برای کل بارنامه ثبت می‌شوند و برای هر کالا تکرار نمی‌شوند.',
+                                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  TextFormField(
+                                    controller: senderCtrl,
+                                    decoration: InputDecoration(
+                                      labelText: 'نام شرکت تأمین‌کننده / ارسال‌کننده (اختیاری)',
+                                      prefixIcon: const Icon(Icons.local_shipping_outlined),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  TextFormField(
+                                    controller: freightCostCtrl,
+                                    decoration: InputDecoration(
+                                      labelText: 'هزینه باربری کل بارنامه (ریال) - اختیاری',
+                                      prefixIcon: const Icon(Icons.payments_outlined),
+                                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                                    ),
+                                    keyboardType: TextInputType.number,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                           const SizedBox(height: 12),
                           TextFormField(
                             controller: nameCtrl,
@@ -7308,35 +7353,16 @@ class _ManifestScreenState extends State<ManifestScreen> {
                               ),
                               keyboardType: TextInputType.number,
                               validator: (value) {
-                                if (isPackageUnit && (value == null || value.trim().isEmpty)) {
-                                  return 'برای واحد بسته/جین، تعداد داخل هر بسته را وارد کنید';
-                                }
-                                if (value != null && value.trim().isNotEmpty && int.tryParse(value) == null) {
-                                  return 'تعداد معتبر وارد کنید';
+                                if (value != null && value.trim().isNotEmpty) {
+                                  final parsed = int.tryParse(value.trim());
+                                  if (parsed == null || parsed <= 0) {
+                                    return 'تعداد معتبر وارد کنید';
+                                  }
                                 }
                                 return null;
                               },
                             ),
                           ],
-                          const SizedBox(height: 12),
-                          TextFormField(
-                            controller: senderCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'نام شرکت ارسال کننده (اختیاری)',
-                              prefixIcon: const Icon(Icons.local_shipping_outlined),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          TextFormField(
-                            controller: freightCostCtrl,
-                            decoration: InputDecoration(
-                              labelText: 'هزینه باربری (ریال) - اختیاری',
-                              prefixIcon: const Icon(Icons.payments_outlined),
-                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            ),
-                            keyboardType: TextInputType.number,
-                          ),
                           const SizedBox(height: 12),
                           SizedBox(
                             width: double.infinity,
@@ -7376,8 +7402,6 @@ class _ManifestScreenState extends State<ManifestScreen> {
                                 nameCtrl.clear();
                                 quantityCtrl.clear();
                                 packageSizeCtrl.clear();
-                                freightCostCtrl.clear();
-                                senderCtrl.clear();
                                 setSheetState(() {
                                   selectedUnit = 'عدد';
                                   isPackageUnit = false;
