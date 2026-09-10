@@ -1077,15 +1077,6 @@ class _SplashScreenState extends State<SplashScreen> {
             ),
             const SizedBox(height: 30),
             const Text(
-              'بِسْمِ اللَّهِ الرَّحْمَنِ الرَّحِيمِ',
-              style: TextStyle(
-                color: Color(0xFFE7D49A),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
               'بوستان فرهنگی مذهبی',
               style: TextStyle(
                 color: Color(0xFFD6B65A),
@@ -3758,6 +3749,14 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
             setState(() => _dailyExpenses = updated);
             await _saveDailyExpenses();
           },
+          onDeleted: (expense) async {
+            await _addToTrash(
+              type: 'expense',
+              title: 'هزینه: ${expense.name}',
+              data: expense.toJson(),
+            );
+            _addSmartLog('🗑️ هزینه «${expense.name}» به سطل زباله منتقل شد');
+          },
         ),
       ),
     );
@@ -3899,6 +3898,11 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
         }
         _productDatabase.add(product);
         await _saveProductDatabase();
+      } else if (item.type == 'expense') {
+        final expense = DailyExpense.fromJson(item.data);
+        if (_dailyExpenses.any((e) => e.id == expense.id)) return false;
+        _dailyExpenses.insert(0, expense);
+        await _saveDailyExpenses();
       } else if (item.type == 'manifest') {
         final manifest = DeliveryManifest.fromJson(item.data);
         if (_savedManifests.any((m) => m.id == manifest.id)) return false;
@@ -4286,7 +4290,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
                                       line['product'] as ProductDatabaseItem;
                                   final qty = line['quantity'] as int;
                                   return Card(
-                                    color: p.stock == 0 ? Colors.red.shade50 : null,
+                                    color: p.stock == 0 ? Colors.red.shade200 : null,
                                     child: ListTile(
                                       leading:
                                           CircleAvatar(child: Text('$qty')),
@@ -4331,7 +4335,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
                                         fontSize: 16)),
                               ),
                               ...products.map((p) => Card(
-                                    color: p.stock == 0 ? Colors.red.shade50 : null,
+                                    color: p.stock == 0 ? Colors.red.shade200 : null,
                                     child: ListTile(
                                       onTap: () => addProduct(p),
                                       leading: const Icon(
@@ -4488,20 +4492,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
                                                 content: Text(
                                                     'کالای ${entry.key} در بانک اطلاعاتی موجود نیست')),
                                           );
-                                          return;
-                                        }
-                                        final oldQty =
-                                            oldQuantities[entry.key] ?? 0;
-                                        final available =
-                                            _productDatabase[idx].stock +
-                                                oldQty;
-                                        if (entry.value > available) {
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(
-                                            SnackBar(
-                                                content: Text(
-                                                    'موجودی ${_productDatabase[idx].name} کافی نیست')),
-                                          );
+                                          _isSavingInvoice = false;
                                           return;
                                         }
                                       }
@@ -4527,8 +4518,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
                                               ProductDatabaseItem(
                                             barcode: p.barcode,
                                             name: p.name,
-                                            stock: (p.stock - delta)
-                                                .clamp(0, 1 << 30)
+                                            stock: p.stock - delta
                                                 .toInt(),
                                             buyPrice: p.buyPrice,
                                             sellPrice: p.sellPrice,
@@ -4703,16 +4693,10 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
             _addSmartLog('🗑️ کالا به سطل زباله منتقل شد');
           },
           onDeleteAll: (items) async {
-            for (final item in items) {
-              await _addToTrash(
-                type: 'product',
-                title: 'کالا: ${item.name}',
-                data: item.toJson(),
-              );
-            }
+            // حذف کامل بانک: برخلاف حذف یک کالا، کل بانک به سطل زباله منتقل نمی‌شود.
             setState(() => _productDatabase.clear());
             await _saveProductDatabase();
-            _addSmartLog('🗑️ کل بانک اطلاعاتی به سطل زباله منتقل شد');
+            _addSmartLog('🗑️ کل بانک اطلاعاتی کالاها به‌طور کامل حذف شد');
           },
         ),
       ),
@@ -5116,7 +5100,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
             TextFormField(
               controller: senderCtrl,
               decoration: InputDecoration(
-                labelText: 'نام شرکت ارسال کننده',
+                labelText: 'نام شرکت ارسال کننده (اختیاری)',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 prefixIcon: const Icon(Icons.local_shipping_outlined),
               ),
@@ -5125,7 +5109,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
             TextFormField(
               controller: freightCostCtrl,
               decoration: InputDecoration(
-                labelText: 'هزینه باربری (ریال)',
+                labelText: 'هزینه باربری (ریال) - اختیاری',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 prefixIcon: const Icon(Icons.payments_outlined),
               ),
@@ -5301,7 +5285,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
                   TextFormField(
                     controller: dateController,
                     decoration: InputDecoration(
-                      labelText: 'تاریخ بارنامه',
+                      labelText: 'تاریخ ورود بارنامه (خودکار)',
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -5841,7 +5825,7 @@ class _DeliveryScreenState extends State<DeliveryScreen> with WidgetsBindingObse
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: dbItem.stock == 0 ? Colors.red.shade50 : Colors.purple.shade50,
+                    color: dbItem.stock == 0 ? Colors.red.shade200 : Colors.purple.shade50,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: Colors.purple.shade200),
                   ),
@@ -7008,7 +6992,7 @@ class ManifestDetailsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 14),
-            const Text('جزئیات کالاهای بارنامه', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const Text('جزئیات باربری و کالاها', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             ...manifest.items.asMap().entries.map((entry) {
               final index = entry.key + 1;
@@ -7157,7 +7141,7 @@ class _ManifestScreenState extends State<ManifestScreen> {
                                   color: Colors.blue),
                               const SizedBox(width: 8),
                               const Text(
-                                'بارنامه جدید',
+                                'ثبت بارنامه جدید',
                                 style: TextStyle(
                                   fontSize: 20,
                                   fontWeight: FontWeight.bold,
@@ -7338,7 +7322,7 @@ class _ManifestScreenState extends State<ManifestScreen> {
                           TextFormField(
                             controller: senderCtrl,
                             decoration: InputDecoration(
-                              labelText: 'نام شرکت ارسال کننده',
+                              labelText: 'نام شرکت ارسال کننده (اختیاری)',
                               prefixIcon: const Icon(Icons.local_shipping_outlined),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
@@ -7347,7 +7331,7 @@ class _ManifestScreenState extends State<ManifestScreen> {
                           TextFormField(
                             controller: freightCostCtrl,
                             decoration: InputDecoration(
-                              labelText: 'هزینه باربری (ریال)',
+                              labelText: 'هزینه باربری (ریال) - اختیاری',
                               prefixIcon: const Icon(Icons.payments_outlined),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                             ),
@@ -8770,11 +8754,13 @@ class _TrashScreenState extends State<TrashScreen> {
 class DailyExpensesScreen extends StatefulWidget {
   final List<DailyExpense> expenses;
   final Future<void> Function(List<DailyExpense>) onChanged;
+  final Future<void> Function(DailyExpense) onDeleted;
 
   const DailyExpensesScreen({
     super.key,
     required this.expenses,
     required this.onChanged,
+    required this.onDeleted,
   });
 
   @override
@@ -8908,6 +8894,7 @@ class _DailyExpensesScreenState extends State<DailyExpensesScreen> {
   Future<void> _deleteExpense(DailyExpense expense) async {
     setState(() => _expenses.removeWhere((e) => e.id == expense.id));
     await widget.onChanged(List.from(_expenses));
+    await widget.onDeleted(expense);
   }
 
   @override
@@ -10768,7 +10755,7 @@ class _ProductDatabaseScreenState extends State<ProductDatabaseScreen> {
                             itemBuilder: (context, index) {
                               final item = visible[index];
                               return Card(
-                                color: item.stock == 0 ? Colors.red.shade50 : (item.isPriceModified ? Colors.yellow.shade100 : null),
+                                color: item.stock == 0 ? Colors.red.shade200 : (item.isPriceModified ? Colors.yellow.shade100 : null),
                                 margin: const EdgeInsets.only(bottom: 8),
                                 child: ListTile(
                                   leading: Stack(
